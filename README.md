@@ -124,9 +124,19 @@ function getFilteredRecords() {
   const departmentValue = departmentFilter.value;
 
   return allRecords.filter((record) => {
-    const searchText = [record.record_id, record.title, record.department, record.category, record.notes].join(' ').toLowerCase();
+    const searchText = [
+      record.record_id,
+      record.title,
+      record.applicant_name,
+      record.department,
+      record.category,
+      record.notes,
+      record.attestation_number,
+      record.case_number,
+    ].join(' ').toLowerCase();
+
     const matchesSearch = !searchValue || searchText.includes(searchValue);
-    const matchesStatus = !statusValue || record.status === statusValue;
+    const matchesStatus = !statusValue || (record.status || 'Uploaded') === statusValue;
     const matchesDepartment = !departmentValue || record.department === departmentValue;
     return matchesSearch && matchesStatus && matchesDepartment;
   });
@@ -144,11 +154,12 @@ function renderRecords() {
     .map((record) => {
       const statusText = record.status || 'Uploaded';
       const statusClass = `status-${statusText.toLowerCase()}`;
+      const applicantName = record.applicant_name || record.title || 'Applicant';
 
       return `
         <tr>
           <td><strong>${record.record_id}</strong></td>
-          <td>${record.title}</td>
+          <td>${applicantName}</td>
           <td>${record.department}</td>
           <td>${record.category}</td>
           <td>
@@ -206,7 +217,7 @@ uploadForm.addEventListener('submit', async (event) => {
 
     uploadStatus.classList.remove('pending');
     uploadStatus.classList.add('success');
-    uploadStatus.textContent = `${result.message} Record ID: ${result.record.recordId}`;
+    uploadStatus.textContent = `${result.message} Record ID: ${result.record.record_id}`;
     uploadForm.reset();
     fetchSummary();
     fetchRecords();
@@ -236,7 +247,8 @@ verifyBtn.addEventListener('click', async () => {
     verifyResult.innerHTML = `
       <div class="verify-card">
         <h3>Verified Document</h3>
-        <p><strong>Title:</strong> ${record.title}</p>
+        <p><strong>Applicant:</strong> ${record.applicant_name || record.title}</p>
+        <p><strong>Attestation No:</strong> ${record.attestation_number || 'Not provided'}</p>
         <p><strong>Department:</strong> ${record.department}</p>
         <p><strong>Category:</strong> ${record.category}</p>
         <p><strong>Status:</strong> ${record.status || 'Uploaded'}</p>
@@ -287,12 +299,13 @@ exportBtn.addEventListener('click', () => {
     return;
   }
 
-  const header = ['Record ID', 'Title', 'Department', 'Category', 'Status', 'Uploaded At'];
+  const header = ['Record ID', 'Applicant', 'Attestation No', 'Department', 'Category', 'Status', 'Uploaded At'];
   const csv = [header.join(',')]
     .concat(
       rows.map((row) => [
         row.record_id,
-        `"${(row.title || '').replace(/"/g, '""')}"`,
+        `"${(row.applicant_name || row.title || '').replace(/"/g, '""')}"`,
+        `"${(row.attestation_number || '').replace(/"/g, '""')}"`,
         `"${(row.department || '').replace(/"/g, '""')}"`,
         `"${(row.category || '').replace(/"/g, '""')}"`,
         row.status || 'Uploaded',
@@ -313,4 +326,3 @@ exportBtn.addEventListener('click', () => {
 });
 
 checkSession();
-

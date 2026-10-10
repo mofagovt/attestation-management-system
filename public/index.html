@@ -39,6 +39,7 @@ function getDateKey(date = new Date()) {
 }
 
 function formatDate(dateValue) {
+  if (!dateValue) return 'Not available';
   return new Date(dateValue).toLocaleString('en-PK', {
     dateStyle: 'medium',
     timeStyle: 'short',
@@ -99,11 +100,30 @@ function initializeDatabase() {
             date_key TEXT NOT NULL,
             status TEXT DEFAULT 'Uploaded',
             qr_payload TEXT,
-            qr_image TEXT
+            qr_image TEXT,
+            attestation_number TEXT,
+            applicant_name TEXT,
+            father_name TEXT,
+            office_name TEXT,
+            issued_on TEXT,
+            case_number TEXT,
+            updated_at TEXT
           )
         `);
 
-        await ensureColumn('records', 'updated_at', 'updated_at TEXT');
+        const columnDefs = [
+          ['attestation_number', 'TEXT'],
+          ['applicant_name', 'TEXT'],
+          ['father_name', 'TEXT'],
+          ['office_name', 'TEXT'],
+          ['issued_on', 'TEXT'],
+          ['case_number', 'TEXT'],
+          ['updated_at', 'TEXT'],
+        ];
+
+        for (const [columnName, definitionSql] of columnDefs) {
+          await ensureColumn('records', columnName, `${columnName} ${definitionSql}`);
+        }
 
         const defaultUsername = process.env.ADMIN_USERNAME || 'admin';
         const defaultPassword = process.env.ADMIN_PASSWORD || 'admin123';
@@ -220,8 +240,19 @@ app.get('/api/records', requireAuth, (req, res) => {
     const department = (req.query.department || '').trim();
 
     const filtered = rows.filter((row) => {
-      const matchSearch = !search || [row.title, row.record_id, row.department, row.category, row.notes].join(' ').toLowerCase().includes(search);
-      const matchStatus = !status || row.status === status;
+      const haystack = [
+        row.title,
+        row.record_id,
+        row.department,
+        row.category,
+        row.notes,
+        row.applicant_name,
+        row.attestation_number,
+        row.case_number,
+      ].join(' ').toLowerCase();
+
+      const matchSearch = !search || haystack.includes(search);
+      const matchStatus = !status || (row.status || 'Uploaded') === status;
       const matchDepartment = !department || row.department === department;
       return matchSearch && matchStatus && matchDepartment;
     });
@@ -273,15 +304,30 @@ app.post('/api/records', requireAuth, upload.single('document'), async (req, res
     return res.status(400).json({ message: 'Please upload a document.' });
   }
 
-  const { title, department, category, notes } = req.body;
+  const {
+    title,
+    department,
+    category,
+    notes,
+    applicantName,
+    fatherName,
+    attestationNumber,
+    issueDate,
+    officeName,
+    caseNumber,
+  } = req.body;
+
   const uploadedAt = new Date().toISOString();
   const recordId = makeRecordId();
   const dateKey = getDateKey();
 
+  const applicant = applicantName || 'Applicant';
+  const finalTitle = title || `${applicant} Attestation`;
+
   const record = {
-    recordId,
-    title: title || req.file.originalname,
-    department: department || 'General Administration',
+    record_id: recordId,
+    title: finalTitle,
+    department: department || officeName || 'General Administration',
     category: category || 'Attestation',
     notes: notes || 'No additional notes provided.',
     fileName: req.file.originalname,
@@ -289,14 +335,21 @@ app.post('/api/records', requireAuth, upload.single('document'), async (req, res
     filePath: `/uploads/${req.file.filename}`,
     uploadedAt,
     dateKey,
+    attestationNumber: attestationNumber || null,
+    applicantName: applicant,
+    fatherName: fatherName || null,
+    officeName: officeName || department || 'General Administration',
+    issuedOn: issueDate || uploadedAt,
+    caseNumber: caseNumber || null,
   };
 
   const qrPayload = {
-    recordId: record.recordId,
-    title: record.title,
+    recordId: record.record_id,
+    applicantName: record.applicantName,
+    attestationNumber: record.attestationNumber,
     department: record.department,
     category: record.category,
-    uploadedAt: record.uploadedAt,
+    issuedOn: record.issuedOn,
     fileName: record.fileName,
   };
 
@@ -304,11 +357,12 @@ app.post('/api/records', requireAuth, upload.single('document'), async (req, res
 
   db.run(
     `INSERT INTO records (
-      record_id, title, department, category, notes, file_name, stored_file_name, file_path, uploaded_at, date_key, status, qr_payload, qr_image
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Uploaded', ?, ?)
+      record_id, title, department, category, notes, file_name, stored_file_name, file_path, uploaded_at, date_key, status, qr_payload, qr_image,
+      attestation_number, applicant_name, father_name, office_name, issued_on, case_number, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Uploaded', ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
-      record.recordId,
+      record.record_id,
       record.title,
       record.department,
       record.category,
@@ -320,6 +374,13 @@ app.post('/api/records', requireAuth, upload.single('document'), async (req, res
       record.dateKey,
       JSON.stringify(qrPayload),
       qrImage,
+      record.attestationNumber,
+      record.applicantName,
+      record.fatherName,
+      record.officeName,
+      record.issuedOn,
+      record.caseNumber,
+      record.uploadedAt,
     ],
     (dbErr) => {
       if (dbErr) {
@@ -328,11 +389,7 @@ app.post('/api/records', requireAuth, upload.single('document'), async (req, res
 
       res.status(201).json({
         message: 'Document uploaded successfully.',
-        record: {
-          ...record,
-          qrPayload,
-          qrImage,
-        },
+        record: { ...record, qrPayload, qrImage },
       });
     }
   );
@@ -370,11 +427,13 @@ app.get('/verify/:recordId', (req, res) => {
               <div>
                 <h1>Attestation Verified</h1>
                 <p class="meta"><strong>Record ID:</strong> ${record.record_id}</p>
-                <p class="meta"><strong>Title:</strong> ${record.title}</p>
+                <p class="meta"><strong>Applicant:</strong> ${record.applicant_name || record.title}</p>
+                <p class="meta"><strong>Father Name:</strong> ${record.father_name || 'Not provided'}</p>
+                <p class="meta"><strong>Attestation No:</strong> ${record.attestation_number || 'Not provided'}</p>
                 <p class="meta"><strong>Department:</strong> ${record.department}</p>
                 <p class="meta"><strong>Category:</strong> ${record.category}</p>
                 <p class="meta"><strong>Status:</strong> ${record.status || 'Uploaded'}</p>
-                <p class="meta"><strong>Uploaded:</strong> ${formatDate(record.uploaded_at)}</p>
+                <p class="meta"><strong>Issued On:</strong> ${formatDate(record.issued_on || record.uploaded_at)}</p>
                 <p class="meta"><strong>Notes:</strong> ${record.notes}</p>
                 <p><a href="/uploads/${record.stored_file_name}" target="_blank">Open uploaded document</a></p>
               </div>

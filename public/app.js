@@ -222,6 +222,10 @@ textarea {
   gap: 16px;
 }
 
+.two-col {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .verify-box {
   margin-bottom: 16px;
 }
@@ -342,7 +346,8 @@ a:hover {
 @media (max-width: 900px) {
   .stats-grid,
   .content-grid,
-  .field-grid {
+  .field-grid,
+  .two-col {
     grid-template-columns: 1fr;
   }
 

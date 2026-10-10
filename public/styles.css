@@ -68,14 +68,31 @@
           <div class="panel form-panel">
             <h2>Upload Attestation Document</h2>
             <form id="uploadForm" enctype="multipart/form-data">
-              <div class="field-group">
-                <label for="title">Title</label>
-                <input id="title" name="title" type="text" placeholder="e.g. Employment Attestation" required />
+              <div class="field-grid two-col">
+                <div class="field-group">
+                  <label for="applicantName">Applicant Name</label>
+                  <input id="applicantName" name="applicantName" type="text" placeholder="Full applicant name" required />
+                </div>
+                <div class="field-group">
+                  <label for="fatherName">Father / Guardian Name</label>
+                  <input id="fatherName" name="fatherName" type="text" placeholder="Father / guardian name" />
+                </div>
               </div>
 
-              <div class="field-grid">
+              <div class="field-grid two-col">
                 <div class="field-group">
-                  <label for="department">Department</label>
+                  <label for="attestationNumber">Attestation Number</label>
+                  <input id="attestationNumber" name="attestationNumber" type="text" placeholder="e.g. A-1024" />
+                </div>
+                <div class="field-group">
+                  <label for="caseNumber">Case / Record Number</label>
+                  <input id="caseNumber" name="caseNumber" type="text" placeholder="Case number" />
+                </div>
+              </div>
+
+              <div class="field-grid two-col">
+                <div class="field-group">
+                  <label for="department">Department / Office</label>
                   <input id="department" name="department" type="text" value="General Administration" />
                 </div>
                 <div class="field-group">
@@ -90,14 +107,20 @@
                 </div>
               </div>
 
-              <div class="field-group">
-                <label for="document">Document File</label>
-                <input id="document" name="document" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" required />
+              <div class="field-grid two-col">
+                <div class="field-group">
+                  <label for="issueDate">Issue Date</label>
+                  <input id="issueDate" name="issueDate" type="date" />
+                </div>
+                <div class="field-group">
+                  <label for="document">Document File</label>
+                  <input id="document" name="document" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" required />
+                </div>
               </div>
 
               <div class="field-group">
-                <label for="notes">Notes</label>
-                <textarea id="notes" name="notes" rows="4" placeholder="Optional notes about this document"></textarea>
+                <label for="notes">Official Notes</label>
+                <textarea id="notes" name="notes" rows="4" placeholder="Add remarks or office comments"></textarea>
               </div>
 
               <button type="submit" class="primary-btn">Upload & Generate QR</button>
@@ -141,7 +164,7 @@
               <thead>
                 <tr>
                   <th>Record ID</th>
-                  <th>Title</th>
+                  <th>Applicant</th>
                   <th>Department</th>
                   <th>Category</th>
                   <th>Status</th>
