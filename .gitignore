@@ -1,0 +1,115 @@
+const summaryEls = {
+  totalCount: document.getElementById('totalCount'),
+  todayCount: document.getElementById('todayCount'),
+  categoriesCount: document.getElementById('categoriesCount'),
+  departmentsCount: document.getElementById('departmentsCount'),
+};
+
+const recordsTableBody = document.getElementById('recordsTableBody');
+const uploadForm = document.getElementById('uploadForm');
+const uploadStatus = document.getElementById('uploadStatus');
+const verifyBtn = document.getElementById('verifyBtn');
+const verifyResult = document.getElementById('verifyResult');
+
+async function fetchSummary() {
+  const response = await fetch('/api/summary');
+  const data = await response.json();
+
+  summaryEls.totalCount.textContent = data.totalCount;
+  summaryEls.todayCount.textContent = data.todayCount;
+  summaryEls.categoriesCount.textContent = data.categoriesCount;
+  summaryEls.departmentsCount.textContent = data.departmentsCount;
+}
+
+async function fetchRecords() {
+  const response = await fetch('/api/records');
+  const data = await response.json();
+
+  if (!data.length) {
+    recordsTableBody.innerHTML = '<tr><td colspan="7" class="muted">No documents uploaded yet.</td></tr>';
+    return;
+  }
+
+  recordsTableBody.innerHTML = data
+    .map(
+      (record) => `
+        <tr>
+          <td><strong>${record.recordId}</strong></td>
+          <td>${record.title}</td>
+          <td>${record.department}</td>
+          <td>${record.category}</td>
+          <td>${new Date(record.uploadedAt).toLocaleDateString('en-PK')}</td>
+          <td><a href="${record.filePath}" target="_blank">Open</a></td>
+          <td><a href="/verify/${record.recordId}" target="_blank">View QR</a></td>
+        </tr>
+      `
+    )
+    .join('');
+}
+
+uploadForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const formData = new FormData(uploadForm);
+  uploadStatus.classList.remove('hidden');
+  uploadStatus.textContent = 'Uploading document...';
+  uploadStatus.classList.add('pending');
+
+  try {
+    const response = await fetch('/api/records', {
+      method: 'POST',
+      body: formData,
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || 'Upload failed');
+    }
+
+    uploadStatus.textContent = `${result.message} Record ID: ${result.record.recordId}`;
+    uploadStatus.classList.remove('pending');
+    uploadStatus.classList.add('success');
+    uploadForm.reset();
+    fetchSummary();
+    fetchRecords();
+  } catch (error) {
+    uploadStatus.textContent = error.message;
+    uploadStatus.classList.remove('pending');
+    uploadStatus.classList.add('error');
+  }
+});
+
+verifyBtn.addEventListener('click', async () => {
+  const recordId = document.getElementById('recordIdLookup').value.trim();
+
+  if (!recordId) {
+    verifyResult.innerHTML = '<p class="warning">Please enter a record ID.</p>';
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/records/${recordId}`);
+    const record = await response.json();
+
+    if (!response.ok) {
+      throw new Error(record.message || 'Record not found');
+    }
+
+    verifyResult.innerHTML = `
+      <div class="verify-card">
+        <h3>Verified Document</h3>
+        <p><strong>Title:</strong> ${record.title}</p>
+        <p><strong>Department:</strong> ${record.department}</p>
+        <p><strong>Category:</strong> ${record.category}</p>
+        <p><strong>Uploaded:</strong> ${new Date(record.uploadedAt).toLocaleString('en-PK')}</p>
+        <p><strong>Notes:</strong> ${record.notes}</p>
+        <a href="${record.filePath}" target="_blank">Open attached file</a>
+      </div>
+    `;
+  } catch (error) {
+    verifyResult.innerHTML = `<p class="warning">${error.message}</p>`;
+  }
+});
+
+fetchSummary();
+fetchRecords();
