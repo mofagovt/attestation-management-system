@@ -33,7 +33,7 @@
     </div>
 
     <div id="appView" class="app-shell hidden">
-      <header class="topbar">
+      <header class="topbar government-bar">
         <div>
           <p class="eyebrow">Ministry Records</p>
           <h1>Attestation Management Portal</h1>
@@ -65,8 +65,12 @@
         </section>
 
         <section class="content-grid">
-          <div class="panel form-panel">
-            <h2>Upload Attestation Document</h2>
+          <div class="panel form-panel official-form-shell">
+            <div class="official-header">
+              <span class="official-badge">Official Record</span>
+              <h2>Register Attestation Document</h2>
+            </div>
+
             <form id="uploadForm" enctype="multipart/form-data">
               <div class="field-grid two-col">
                 <div class="field-group">

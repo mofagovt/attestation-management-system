@@ -145,6 +145,14 @@ textarea {
   margin: 32px auto;
 }
 
+.government-bar {
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.8);
+  border-radius: 18px;
+  padding: 18px 20px;
+  box-shadow: var(--shadow);
+}
+
 .topbar {
   display: flex;
   justify-content: space-between;
@@ -214,6 +222,27 @@ textarea {
   box-shadow: var(--shadow);
   border: 1px solid var(--line);
   padding: 22px;
+}
+
+.official-form-shell {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.official-header {
+  margin-bottom: 18px;
+}
+
+.official-badge {
+  display: inline-block;
+  margin-bottom: 10px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .field-grid {
