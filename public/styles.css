@@ -1,115 +1,151 @@
-const summaryEls = {
-  totalCount: document.getElementById('totalCount'),
-  todayCount: document.getElementById('todayCount'),
-  categoriesCount: document.getElementById('categoriesCount'),
-  departmentsCount: document.getElementById('departmentsCount'),
-};
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Government Attestation Portal</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="loginView" class="auth-shell">
+      <div class="auth-card">
+        <div class="auth-header">
+          <p class="eyebrow">Secure Access</p>
+          <h1>Government Attestation Portal</h1>
+        </div>
 
-const recordsTableBody = document.getElementById('recordsTableBody');
-const uploadForm = document.getElementById('uploadForm');
-const uploadStatus = document.getElementById('uploadStatus');
-const verifyBtn = document.getElementById('verifyBtn');
-const verifyResult = document.getElementById('verifyResult');
+        <form id="loginForm" class="auth-form">
+          <div class="field-group">
+            <label for="username">Username</label>
+            <input id="username" name="username" type="text" value="admin" required />
+          </div>
 
-async function fetchSummary() {
-  const response = await fetch('/api/summary');
-  const data = await response.json();
+          <div class="field-group">
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" value="admin123" required />
+          </div>
 
-  summaryEls.totalCount.textContent = data.totalCount;
-  summaryEls.todayCount.textContent = data.todayCount;
-  summaryEls.categoriesCount.textContent = data.categoriesCount;
-  summaryEls.departmentsCount.textContent = data.departmentsCount;
-}
+          <button type="submit" class="primary-btn full-width">Login</button>
+        </form>
 
-async function fetchRecords() {
-  const response = await fetch('/api/records');
-  const data = await response.json();
-
-  if (!data.length) {
-    recordsTableBody.innerHTML = '<tr><td colspan="7" class="muted">No documents uploaded yet.</td></tr>';
-    return;
-  }
-
-  recordsTableBody.innerHTML = data
-    .map(
-      (record) => `
-        <tr>
-          <td><strong>${record.recordId}</strong></td>
-          <td>${record.title}</td>
-          <td>${record.department}</td>
-          <td>${record.category}</td>
-          <td>${new Date(record.uploadedAt).toLocaleDateString('en-PK')}</td>
-          <td><a href="${record.filePath}" target="_blank">Open</a></td>
-          <td><a href="/verify/${record.recordId}" target="_blank">View QR</a></td>
-        </tr>
-      `
-    )
-    .join('');
-}
-
-uploadForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const formData = new FormData(uploadForm);
-  uploadStatus.classList.remove('hidden');
-  uploadStatus.textContent = 'Uploading document...';
-  uploadStatus.classList.add('pending');
-
-  try {
-    const response = await fetch('/api/records', {
-      method: 'POST',
-      body: formData,
-    });
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result.message || 'Upload failed');
-    }
-
-    uploadStatus.textContent = `${result.message} Record ID: ${result.record.recordId}`;
-    uploadStatus.classList.remove('pending');
-    uploadStatus.classList.add('success');
-    uploadForm.reset();
-    fetchSummary();
-    fetchRecords();
-  } catch (error) {
-    uploadStatus.textContent = error.message;
-    uploadStatus.classList.remove('pending');
-    uploadStatus.classList.add('error');
-  }
-});
-
-verifyBtn.addEventListener('click', async () => {
-  const recordId = document.getElementById('recordIdLookup').value.trim();
-
-  if (!recordId) {
-    verifyResult.innerHTML = '<p class="warning">Please enter a record ID.</p>';
-    return;
-  }
-
-  try {
-    const response = await fetch(`/api/records/${recordId}`);
-    const record = await response.json();
-
-    if (!response.ok) {
-      throw new Error(record.message || 'Record not found');
-    }
-
-    verifyResult.innerHTML = `
-      <div class="verify-card">
-        <h3>Verified Document</h3>
-        <p><strong>Title:</strong> ${record.title}</p>
-        <p><strong>Department:</strong> ${record.department}</p>
-        <p><strong>Category:</strong> ${record.category}</p>
-        <p><strong>Uploaded:</strong> ${new Date(record.uploadedAt).toLocaleString('en-PK')}</p>
-        <p><strong>Notes:</strong> ${record.notes}</p>
-        <a href="${record.filePath}" target="_blank">Open attached file</a>
+        <div id="loginStatus" class="status-box hidden"></div>
       </div>
-    `;
-  } catch (error) {
-    verifyResult.innerHTML = `<p class="warning">${error.message}</p>`;
-  }
-});
+    </div>
 
-fetchSummary();
-fetchRecords();
+    <div id="appView" class="app-shell hidden">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Ministry Records</p>
+          <h1>Attestation Management Portal</h1>
+        </div>
+        <div class="topbar-actions">
+          <span id="loggedUserLabel" class="status-pill"></span>
+          <button id="logoutBtn" class="secondary-btn">Logout</button>
+        </div>
+      </header>
+
+      <main class="dashboard">
+        <section class="stats-grid">
+          <article class="stat-card accent-blue">
+            <span>Total Records</span>
+            <strong id="totalCount">0</strong>
+          </article>
+          <article class="stat-card accent-green">
+            <span>Today's Uploads</span>
+            <strong id="todayCount">0</strong>
+          </article>
+          <article class="stat-card accent-purple">
+            <span>Categories</span>
+            <strong id="categoriesCount">0</strong>
+          </article>
+          <article class="stat-card accent-gold">
+            <span>Departments</span>
+            <strong id="departmentsCount">0</strong>
+          </article>
+        </section>
+
+        <section class="content-grid">
+          <div class="panel form-panel">
+            <h2>Upload Attestation Document</h2>
+            <form id="uploadForm" enctype="multipart/form-data">
+              <div class="field-group">
+                <label for="title">Title</label>
+                <input id="title" name="title" type="text" placeholder="e.g. Employment Attestation" required />
+              </div>
+
+              <div class="field-grid">
+                <div class="field-group">
+                  <label for="department">Department</label>
+                  <input id="department" name="department" type="text" value="General Administration" />
+                </div>
+                <div class="field-group">
+                  <label for="category">Category</label>
+                  <select id="category" name="category">
+                    <option value="Attestation">Attestation</option>
+                    <option value="Visa">Visa</option>
+                    <option value="Education">Education</option>
+                    <option value="Employment">Employment</option>
+                    <option value="Legal">Legal</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="field-group">
+                <label for="document">Document File</label>
+                <input id="document" name="document" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" required />
+              </div>
+
+              <div class="field-group">
+                <label for="notes">Notes</label>
+                <textarea id="notes" name="notes" rows="4" placeholder="Optional notes about this document"></textarea>
+              </div>
+
+              <button type="submit" class="primary-btn">Upload & Generate QR</button>
+            </form>
+            <div id="uploadStatus" class="status-box hidden"></div>
+          </div>
+
+          <div class="panel verification-panel">
+            <h2>Verify Record</h2>
+            <div class="verify-box">
+              <label for="recordIdLookup">Record ID</label>
+              <div class="verify-row">
+                <input id="recordIdLookup" type="text" placeholder="ATT-123456-ABCDEF" />
+                <button id="verifyBtn" type="button" class="secondary-btn">Verify</button>
+              </div>
+            </div>
+            <div id="verifyResult" class="verify-result"></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="table-head">
+            <h2>Daily Upload Log</h2>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Record ID</th>
+                  <th>Title</th>
+                  <th>Department</th>
+                  <th>Category</th>
+                  <th>Uploaded</th>
+                  <th>Document</th>
+                  <th>QR</th>
+                </tr>
+              </thead>
+              <tbody id="recordsTableBody">
+                <tr>
+                  <td colspan="7" class="muted">Loading records...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

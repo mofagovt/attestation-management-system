@@ -1,0 +1,78 @@
+# Government Attestation Management Portal
+
+A secure daily document upload and verification app for managing attestation records. Staff can log in, upload attestation documents, generate QR codes, and verify records from a dashboard.
+
+## Features
+
+- Secure admin login using Express session middleware
+- Daily document upload tracking
+- QR code generation and verification links
+- Dashboard summary stats
+- SQLite-backed records storage
+- Local document file management
+
+## Default Admin Credentials
+
+The app starts with a default admin account:
+
+- Username: `admin`
+- Password: `admin123`
+
+For production deployment, change the password immediately and configure environment variables.
+
+## Tech Stack
+
+- Node.js
+- Express.js
+- SQLite
+- Multer
+- QRCode
+- Vanilla JavaScript and CSS
+
+## Getting Started
+
+1. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+2. Start the app:
+
+   ```bash
+   npm start
+   ```
+
+3. Open the portal in a browser:
+
+   ```bash
+   http://localhost:3000
+   ```
+
+## Project Structure
+
+```text
+attestation-management-system/
+├── data/
+│   └── attestation.db
+├── public/
+│   ├── index.html
+│   ├── app.js
+│   └── styles.css
+├── uploads/
+├── .gitignore
+├── package.json
+├── README.md
+├── server.js
+└── uploads/
+```
+
+## Production Notes
+
+This version is suitable as a strong internal prototype. For a live government deployment, add:
+
+- role-based roles beyond admin
+- encrypted storage and audit logs
+- stronger identity integration
+- backup and retention policy
+- HTTPS-only deployment

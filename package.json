@@ -1,7 +1,7 @@
 {
   "name": "attestation-management-system",
   "version": "1.0.0",
-  "description": "Daily attestation document upload and verification web app",
+  "description": "Secure daily attestation document management portal",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -12,13 +12,17 @@
     "government",
     "document-upload",
     "qr-code",
-    "verification"
+    "verification",
+    "dashboard"
   ],
   "author": "mofagovt",
   "license": "MIT",
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "express": "^4.19.2",
+    "express-session": "^1.18.0",
     "multer": "^1.4.5-lts.1",
-    "qrcode": "^1.0.1"
+    "qrcode": "^1.0.1",
+    "sqlite3": "^5.1.7"
   }
 }
