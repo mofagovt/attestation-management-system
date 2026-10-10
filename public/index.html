@@ -1,78 +1,408 @@
-# Government Attestation Management Portal
+const express = require('express');
+const multer = require('multer');
+const fs = require('fs');
+const path = require('path');
+const QRCode = require('qrcode');
+const session = require('express-session');
+const sqlite3 = require('sqlite3').verbose();
+const bcrypt = require('bcryptjs');
 
-A secure daily document upload and verification app for managing attestation records. Staff can log in, upload attestation documents, generate QR codes, and verify records from a dashboard.
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-## Features
+const rootDir = __dirname;
+const dataDir = path.join(rootDir, 'data');
+const uploadsDir = path.join(rootDir, 'uploads');
+const dbPath = path.join(dataDir, 'attestation.db');
 
-- Secure admin login using Express session middleware
-- Daily document upload tracking
-- QR code generation and verification links
-- Dashboard summary stats
-- SQLite-backed records storage
-- Local document file management
+fs.mkdirSync(dataDir, { recursive: true });
+fs.mkdirSync(uploadsDir, { recursive: true });
 
-## Default Admin Credentials
+const db = new sqlite3.Database(dbPath);
 
-The app starts with a default admin account:
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadsDir),
+  filename: (req, file, cb) => {
+    const safeName = file.originalname.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9._-]/g, '');
+    const timestamp = Date.now();
+    cb(null, `${timestamp}-${safeName}`);
+  },
+});
 
-- Username: `admin`
-- Password: `admin123`
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
 
-For production deployment, change the password immediately and configure environment variables.
+function getDateKey(date = new Date()) {
+  return date.toISOString().split('T')[0];
+}
 
-## Tech Stack
+function formatDate(dateValue) {
+  return new Date(dateValue).toLocaleString('en-PK', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
 
-- Node.js
-- Express.js
-- SQLite
-- Multer
-- QRCode
-- Vanilla JavaScript and CSS
+function makeRecordId() {
+  const random = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `ATT-${Date.now().toString().slice(-6)}-${random}`;
+}
 
-## Getting Started
+function requireAuth(req, res, next) {
+  if (!req.session.user) {
+    return res.status(401).json({ message: 'Unauthorized. Please log in.' });
+  }
+  next();
+}
 
-1. Install dependencies:
+function ensureColumn(tableName, columnName, definitionSql) {
+  return new Promise((resolve, reject) => {
+    db.all(`PRAGMA table_info(${tableName})`, (err, columns) => {
+      if (err) return reject(err);
+      const exists = columns.some((column) => column.name === columnName);
+      if (exists) return resolve();
+      db.run(`ALTER TABLE ${tableName} ADD COLUMN ${definitionSql}`, (alterErr) => {
+        if (alterErr) return reject(alterErr);
+        resolve();
+      });
+    });
+  });
+}
 
-   ```bash
-   npm install
-   ```
+function initializeDatabase() {
+  return new Promise((resolve, reject) => {
+    db.serialize(async () => {
+      try {
+        db.run(`
+          CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT DEFAULT 'admin'
+          )
+        `);
 
-2. Start the app:
+        db.run(`
+          CREATE TABLE IF NOT EXISTS records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            record_id TEXT UNIQUE NOT NULL,
+            title TEXT NOT NULL,
+            department TEXT NOT NULL,
+            category TEXT NOT NULL,
+            notes TEXT,
+            file_name TEXT NOT NULL,
+            stored_file_name TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            uploaded_at TEXT NOT NULL,
+            date_key TEXT NOT NULL,
+            status TEXT DEFAULT 'Uploaded',
+            qr_payload TEXT,
+            qr_image TEXT
+          )
+        `);
 
-   ```bash
-   npm start
-   ```
+        await ensureColumn('records', 'updated_at', 'updated_at TEXT');
 
-3. Open the portal in a browser:
+        const defaultUsername = process.env.ADMIN_USERNAME || 'admin';
+        const defaultPassword = process.env.ADMIN_PASSWORD || 'admin123';
 
-   ```bash
-   http://localhost:3000
-   ```
+        db.get('SELECT id FROM users WHERE username = ?', [defaultUsername], async (userErr, existingUser) => {
+          if (userErr) return reject(userErr);
+          if (existingUser) return resolve();
 
-## Project Structure
+          try {
+            const passwordHash = await bcrypt.hash(defaultPassword, 10);
+            db.run(
+              'INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)',
+              [defaultUsername, passwordHash, 'admin'],
+              (insertErr) => {
+                if (insertErr) return reject(insertErr);
+                resolve();
+              }
+            );
+          } catch (hashErr) {
+            reject(hashErr);
+          }
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+}
 
-```text
-attestation-management-system/
-├── data/
-│   └── attestation.db
-├── public/
-│   ├── index.html
-│   ├── app.js
-│   └── styles.css
-├── uploads/
-├── .gitignore
-├── package.json
-├── README.md
-├── server.js
-└── uploads/
-```
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'attestation-admin-secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    maxAge: 1000 * 60 * 60 * 8,
+    httpOnly: true,
+  },
+}));
 
-## Production Notes
+app.use('/uploads', express.static(uploadsDir));
+app.use(express.static(path.join(rootDir, 'public')));
 
-This version is suitable as a strong internal prototype. For a live government deployment, add:
+app.get('/api/auth/session', (req, res) => {
+  if (!req.session.user) {
+    return res.status(401).json({ authenticated: false });
+  }
 
-- role-based roles beyond admin
-- encrypted storage and audit logs
-- stronger identity integration
-- backup and retention policy
-- HTTPS-only deployment
+  res.json({ authenticated: true, user: req.session.user });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ message: 'Username and password are required.' });
+  }
+
+  db.get('SELECT * FROM users WHERE username = ?', [username], async (err, user) => {
+    if (err || !user) {
+      return res.status(401).json({ message: 'Invalid credentials.' });
+    }
+
+    const valid = await bcrypt.compare(password, user.password_hash);
+
+    if (!valid) {
+      return res.status(401).json({ message: 'Invalid credentials.' });
+    }
+
+    req.session.user = {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+    };
+
+    return res.json({ success: true, user: req.session.user });
+  });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.json({ success: true });
+  });
+});
+
+app.get('/api/summary', requireAuth, (req, res) => {
+  db.all('SELECT * FROM records ORDER BY uploaded_at DESC', (err, rows) => {
+    if (err) {
+      return res.status(500).json({ message: 'Unable to load summary.' });
+    }
+
+    const todayKey = getDateKey();
+    const categories = new Set(rows.map((record) => record.category).filter(Boolean));
+    const departments = new Set(rows.map((record) => record.department).filter(Boolean));
+
+    res.json({
+      totalCount: rows.length,
+      todayCount: rows.filter((row) => row.date_key === todayKey).length,
+      categoriesCount: categories.size,
+      departmentsCount: departments.size,
+    });
+  });
+});
+
+app.get('/api/records', requireAuth, (req, res) => {
+  db.all('SELECT * FROM records ORDER BY uploaded_at DESC', (err, rows) => {
+    if (err) {
+      return res.status(500).json({ message: 'Unable to load records.' });
+    }
+
+    const search = (req.query.search || '').trim().toLowerCase();
+    const status = (req.query.status || '').trim();
+    const department = (req.query.department || '').trim();
+
+    const filtered = rows.filter((row) => {
+      const matchSearch = !search || [row.title, row.record_id, row.department, row.category, row.notes].join(' ').toLowerCase().includes(search);
+      const matchStatus = !status || row.status === status;
+      const matchDepartment = !department || row.department === department;
+      return matchSearch && matchStatus && matchDepartment;
+    });
+
+    res.json(filtered);
+  });
+});
+
+app.get('/api/records/:recordId', requireAuth, (req, res) => {
+  const { recordId } = req.params;
+
+  db.get('SELECT * FROM records WHERE record_id = ?', [recordId], (err, row) => {
+    if (err || !row) {
+      return res.status(404).json({ message: 'Record not found.' });
+    }
+
+    res.json(row);
+  });
+});
+
+app.put('/api/records/:recordId/status', requireAuth, (req, res) => {
+  const { recordId } = req.params;
+  const { status } = req.body;
+
+  const validStatuses = ['Uploaded', 'Verified', 'Approved', 'Rejected'];
+  if (!validStatuses.includes(status)) {
+    return res.status(400).json({ message: 'Invalid status.' });
+  }
+
+  db.run(
+    'UPDATE records SET status = ?, updated_at = ? WHERE record_id = ?',
+    [status, new Date().toISOString(), recordId],
+    function (err) {
+      if (err) {
+        return res.status(500).json({ message: 'Unable to update status.' });
+      }
+
+      if (this.changes === 0) {
+        return res.status(404).json({ message: 'Record not found.' });
+      }
+
+      res.json({ success: true, recordId, status });
+    }
+  );
+});
+
+app.post('/api/records', requireAuth, upload.single('document'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: 'Please upload a document.' });
+  }
+
+  const { title, department, category, notes } = req.body;
+  const uploadedAt = new Date().toISOString();
+  const recordId = makeRecordId();
+  const dateKey = getDateKey();
+
+  const record = {
+    recordId,
+    title: title || req.file.originalname,
+    department: department || 'General Administration',
+    category: category || 'Attestation',
+    notes: notes || 'No additional notes provided.',
+    fileName: req.file.originalname,
+    storedFileName: req.file.filename,
+    filePath: `/uploads/${req.file.filename}`,
+    uploadedAt,
+    dateKey,
+  };
+
+  const qrPayload = {
+    recordId: record.recordId,
+    title: record.title,
+    department: record.department,
+    category: record.category,
+    uploadedAt: record.uploadedAt,
+    fileName: record.fileName,
+  };
+
+  const qrImage = await QRCode.toDataURL(JSON.stringify(qrPayload));
+
+  db.run(
+    `INSERT INTO records (
+      record_id, title, department, category, notes, file_name, stored_file_name, file_path, uploaded_at, date_key, status, qr_payload, qr_image
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Uploaded', ?, ?)
+    `,
+    [
+      record.recordId,
+      record.title,
+      record.department,
+      record.category,
+      record.notes,
+      record.fileName,
+      record.storedFileName,
+      record.filePath,
+      record.uploadedAt,
+      record.dateKey,
+      JSON.stringify(qrPayload),
+      qrImage,
+    ],
+    (dbErr) => {
+      if (dbErr) {
+        return res.status(500).json({ message: 'Unable to save record.' });
+      }
+
+      res.status(201).json({
+        message: 'Document uploaded successfully.',
+        record: {
+          ...record,
+          qrPayload,
+          qrImage,
+        },
+      });
+    }
+  );
+});
+
+app.get('/verify/:recordId', (req, res) => {
+  const { recordId } = req.params;
+
+  db.get('SELECT * FROM records WHERE record_id = ?', [recordId], (err, record) => {
+    if (err || !record) {
+      return res.status(404).send('<h2>Record not found.</h2>');
+    }
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="en">
+        <head>
+          <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>Verify Attestation</title>
+          <style>
+            body { font-family: Arial, sans-serif; background: #f3f4f6; color: #111827; padding: 24px; }
+            .card { max-width: 760px; margin: 40px auto; background: white; border-radius: 16px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+            .grid { display: grid; grid-template-columns: 1fr 220px; gap: 24px; }
+            h1 { margin-top: 0; }
+            .meta { margin: 12px 0; }
+            .qr { text-align: center; }
+            img { width: 180px; height: 180px; }
+            a { color: #1d4ed8; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="grid">
+              <div>
+                <h1>Attestation Verified</h1>
+                <p class="meta"><strong>Record ID:</strong> ${record.record_id}</p>
+                <p class="meta"><strong>Title:</strong> ${record.title}</p>
+                <p class="meta"><strong>Department:</strong> ${record.department}</p>
+                <p class="meta"><strong>Category:</strong> ${record.category}</p>
+                <p class="meta"><strong>Status:</strong> ${record.status || 'Uploaded'}</p>
+                <p class="meta"><strong>Uploaded:</strong> ${formatDate(record.uploaded_at)}</p>
+                <p class="meta"><strong>Notes:</strong> ${record.notes}</p>
+                <p><a href="/uploads/${record.stored_file_name}" target="_blank">Open uploaded document</a></p>
+              </div>
+              <div class="qr">
+                <img src="${record.qr_image}" alt="QR Code" />
+              </div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    res.send(html);
+  });
+});
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(rootDir, 'public', 'index.html'));
+});
+
+initializeDatabase()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Attestation management system running on http://localhost:${PORT}`);
+      console.log('Default admin login: username=admin, password=admin123');
+    });
+  })
+  .catch((error) => {
+    console.error('Database initialization failed:', error);
+    process.exit(1);
+  });

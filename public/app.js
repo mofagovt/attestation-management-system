@@ -132,12 +132,16 @@ textarea {
   color: #1e3a8a;
 }
 
+.small-btn {
+  white-space: nowrap;
+}
+
 .full-width {
   width: 100%;
 }
 
 .app-shell {
-  width: min(1200px, calc(100% - 32px));
+  width: min(1280px, calc(100% - 32px));
   margin: 32px auto;
 }
 
@@ -255,8 +259,25 @@ textarea {
   font-weight: 600;
 }
 
-.table-head {
-  margin-bottom: 12px;
+.table-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.table-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.table-controls input,
+.table-controls select {
+  min-width: 150px;
 }
 
 .table-wrap {
@@ -285,6 +306,25 @@ tbody tr:hover {
   background: #f9fafb;
 }
 
+.status-select {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.status-uploaded { background: #dbeafe; color: #1d4ed8; }
+.status-verified { background: #dcfce7; color: #166534; }
+.status-approved { background: #e0e7ff; color: #3730a3; }
+.status-rejected { background: #fee2e2; color: #991b1b; }
+
 .muted {
   color: var(--muted);
   text-align: center;
@@ -306,7 +346,9 @@ a:hover {
     grid-template-columns: 1fr;
   }
 
-  .topbar {
+  .topbar,
+  .table-topbar,
+  .table-controls {
     flex-direction: column;
     align-items: flex-start;
   }

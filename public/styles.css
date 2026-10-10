@@ -119,8 +119,22 @@
         </section>
 
         <section class="panel">
-          <div class="table-head">
+          <div class="table-topbar">
             <h2>Daily Upload Log</h2>
+            <div class="table-controls">
+              <input id="searchInput" type="text" placeholder="Search records..." />
+              <select id="statusFilter">
+                <option value="">All statuses</option>
+                <option value="Uploaded">Uploaded</option>
+                <option value="Verified">Verified</option>
+                <option value="Approved">Approved</option>
+                <option value="Rejected">Rejected</option>
+              </select>
+              <select id="departmentFilter">
+                <option value="">All departments</option>
+              </select>
+              <button id="exportBtn" class="secondary-btn small-btn" type="button">Export CSV</button>
+            </div>
           </div>
           <div class="table-wrap">
             <table>
@@ -130,6 +144,7 @@
                   <th>Title</th>
                   <th>Department</th>
                   <th>Category</th>
+                  <th>Status</th>
                   <th>Uploaded</th>
                   <th>Document</th>
                   <th>QR</th>
@@ -137,7 +152,7 @@
               </thead>
               <tbody id="recordsTableBody">
                 <tr>
-                  <td colspan="7" class="muted">Loading records...</td>
+                  <td colspan="8" class="muted">Loading records...</td>
                 </tr>
               </tbody>
             </table>

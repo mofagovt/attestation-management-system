@@ -17,6 +17,12 @@ const uploadForm = document.getElementById('uploadForm');
 const uploadStatus = document.getElementById('uploadStatus');
 const verifyBtn = document.getElementById('verifyBtn');
 const verifyResult = document.getElementById('verifyResult');
+const searchInput = document.getElementById('searchInput');
+const statusFilter = document.getElementById('statusFilter');
+const departmentFilter = document.getElementById('departmentFilter');
+const exportBtn = document.getElementById('exportBtn');
+
+let allRecords = [];
 
 function showLogin() {
   loginView.classList.remove('hidden');
@@ -100,31 +106,78 @@ async function fetchSummary() {
   }
 }
 
+function populateDepartmentFilter(records) {
+  const departments = [...new Set(records.map((record) => record.department).filter(Boolean))].sort();
+  const currentValue = departmentFilter.value;
+
+  departmentFilter.innerHTML = '<option value="">All departments</option>' +
+    departments.map((department) => `<option value="${department}">${department}</option>`).join('');
+
+  if (departments.includes(currentValue)) {
+    departmentFilter.value = currentValue;
+  }
+}
+
+function getFilteredRecords() {
+  const searchValue = searchInput.value.trim().toLowerCase();
+  const statusValue = statusFilter.value;
+  const departmentValue = departmentFilter.value;
+
+  return allRecords.filter((record) => {
+    const searchText = [record.record_id, record.title, record.department, record.category, record.notes].join(' ').toLowerCase();
+    const matchesSearch = !searchValue || searchText.includes(searchValue);
+    const matchesStatus = !statusValue || record.status === statusValue;
+    const matchesDepartment = !departmentValue || record.department === departmentValue;
+    return matchesSearch && matchesStatus && matchesDepartment;
+  });
+}
+
+function renderRecords() {
+  const filteredRecords = getFilteredRecords();
+
+  if (!filteredRecords.length) {
+    recordsTableBody.innerHTML = '<tr><td colspan="8" class="muted">No matching records found.</td></tr>';
+    return;
+  }
+
+  recordsTableBody.innerHTML = filteredRecords
+    .map((record) => {
+      const statusText = record.status || 'Uploaded';
+      const statusClass = `status-${statusText.toLowerCase()}`;
+
+      return `
+        <tr>
+          <td><strong>${record.record_id}</strong></td>
+          <td>${record.title}</td>
+          <td>${record.department}</td>
+          <td>${record.category}</td>
+          <td>
+            <span class="status-badge ${statusClass}">${statusText}</span>
+            <div class="status-editor">
+              <select class="status-select" data-record-id="${record.record_id}">
+                <option value="Uploaded" ${statusText === 'Uploaded' ? 'selected' : ''}>Uploaded</option>
+                <option value="Verified" ${statusText === 'Verified' ? 'selected' : ''}>Verified</option>
+                <option value="Approved" ${statusText === 'Approved' ? 'selected' : ''}>Approved</option>
+                <option value="Rejected" ${statusText === 'Rejected' ? 'selected' : ''}>Rejected</option>
+              </select>
+            </div>
+          </td>
+          <td>${new Date(record.uploaded_at).toLocaleDateString('en-PK')}</td>
+          <td><a href="${record.file_path}" target="_blank">Open</a></td>
+          <td><a href="/verify/${record.record_id}" target="_blank">View QR</a></td>
+        </tr>
+      `;
+    })
+    .join('');
+}
+
 async function fetchRecords() {
   try {
     const response = await fetch('/api/records');
     const data = await response.json();
-
-    if (!data.length) {
-      recordsTableBody.innerHTML = '<tr><td colspan="7" class="muted">No documents uploaded yet.</td></tr>';
-      return;
-    }
-
-    recordsTableBody.innerHTML = data
-      .map(
-        (record) => `
-          <tr>
-            <td><strong>${record.record_id}</strong></td>
-            <td>${record.title}</td>
-            <td>${record.department}</td>
-            <td>${record.category}</td>
-            <td>${new Date(record.uploaded_at).toLocaleDateString('en-PK')}</td>
-            <td><a href="${record.file_path}" target="_blank">Open</a></td>
-            <td><a href="/verify/${record.record_id}" target="_blank">View QR</a></td>
-          </tr>
-        `
-      )
-      .join('');
+    allRecords = data || [];
+    populateDepartmentFilter(allRecords);
+    renderRecords();
   } catch (error) {
     console.error('Record fetch failed:', error);
   }
@@ -186,6 +239,7 @@ verifyBtn.addEventListener('click', async () => {
         <p><strong>Title:</strong> ${record.title}</p>
         <p><strong>Department:</strong> ${record.department}</p>
         <p><strong>Category:</strong> ${record.category}</p>
+        <p><strong>Status:</strong> ${record.status || 'Uploaded'}</p>
         <p><strong>Uploaded:</strong> ${new Date(record.uploaded_at).toLocaleString('en-PK')}</p>
         <p><strong>Notes:</strong> ${record.notes}</p>
         <a href="${record.file_path}" target="_blank">Open attached file</a>
@@ -196,4 +250,67 @@ verifyBtn.addEventListener('click', async () => {
   }
 });
 
+searchInput.addEventListener('input', renderRecords);
+statusFilter.addEventListener('change', renderRecords);
+departmentFilter.addEventListener('change', renderRecords);
+
+recordsTableBody.addEventListener('change', async (event) => {
+  const select = event.target.closest('.status-select');
+  if (!select) return;
+
+  const recordId = select.dataset.recordId;
+  const newStatus = select.value;
+
+  try {
+    const response = await fetch(`/api/records/${recordId}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus }),
+    });
+
+    if (!response.ok) {
+      const result = await response.json();
+      throw new Error(result.message || 'Failed to update status');
+    }
+
+    fetchSummary();
+    fetchRecords();
+  } catch (error) {
+    alert(error.message);
+  }
+});
+
+exportBtn.addEventListener('click', () => {
+  const rows = getFilteredRecords();
+  if (!rows.length) {
+    alert('No records to export.');
+    return;
+  }
+
+  const header = ['Record ID', 'Title', 'Department', 'Category', 'Status', 'Uploaded At'];
+  const csv = [header.join(',')]
+    .concat(
+      rows.map((row) => [
+        row.record_id,
+        `"${(row.title || '').replace(/"/g, '""')}"`,
+        `"${(row.department || '').replace(/"/g, '""')}"`,
+        `"${(row.category || '').replace(/"/g, '""')}"`,
+        row.status || 'Uploaded',
+        new Date(row.uploaded_at).toISOString(),
+      ].join(','))
+    )
+    .join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'attestation-records.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
 checkSession();
+
